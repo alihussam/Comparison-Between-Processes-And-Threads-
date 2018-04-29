@@ -1,123 +1,69 @@
-#include <stdio.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <time.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/shm.h>
-#define max 10
+#include<stdio.h>
+#include<unistd.h>
+#include<sys/ipc.h>
+#include<sys/shm.h>
+#include<sys/wait.h>
+#include<sys/types.h>
+#define shmsize 100
+#define shmmode (SHM_R|SHM_W)
+#define shmkey (key_t)31
 
+int main() {
+    int shmid1, shmid2, pid, status;
+    int *shmdata1, *shmdata2, *shmdata;
+    int mtx1[10][10], mtx2[10][10];
+    int i,j,k,r1,r2,c1,c2;
+    struct shmd_ds *shmidds;
+    shmid1 = shmget(shmkey,shmsize,shmmode|IPC_CREAT|IPC_EXCL);
+    shmdata1 = (int*)shmat(shmid1,0,0);
+    shmdata = shmdata1;
+    printf("\nShmID: %d ShmData: %d \n",shmid1,*shmdata1);
+    printf("Enter the rows and columns of matrix 1:");
+    scanf("%d%d",&r1,&c1);
+    printf("Enter the matrix 1: \n");
+    for(i=0;i<r1;++i)
+        for(j=0;j<c1;++j)
+            scanf("%d",&mtx1[i][j]);
+    printf("\nEnter the rows and columns of matrix 2:");
+    scanf("%d%d",&r2,&c2);
+    printf("Enter the matrix 2: \n");    
+    for(i=0;i<r2;++i)
+        for(j=0;j<c2;++j)
+            scanf("%d",&mtx2[i][j]);    
+    printf("\n Hello,note this...");
+    if(r2!=c1) {
+        printf("\nCannot Multiply");
+        return 0;
+    }
 
-void multi(int **matA,int **matB,int **matC,int *dividing_variable,pid_t pid)
-{
-    printf("%d",*dividing_variable);
-    int core = *dividing_variable++;
- 
-    printf("\nMatrixMulProcessing [INFO] PID: %d performing calculations..",pid);
-    for (int i = core * max / 4; i < (core + 1) * max / 4; i++) 
-        for (int j = 0; j < max; j++) 
-            for (int k = 0; k < max; k++) 
-                matC[i][j] += matA[i][k] * matB[k][j];
-}
-
-
-int main(){
-   pid_t pid;
-   clock_t start, end;
-   double cpu_time_used;
-   
-    int shmid,shmid2,shmid3,divid;
-    int *shm_array[max],*shm_array2[max],*shm_array3[max],*div;
-    if((shmid = shmget(IPC_PRIVATE,sizeof(int[max][max]),IPC_CREAT | 0666))<0){
-        perror("shmget");
-        _exit(-1);
-    }
-    if((shm_array[max] = shmat(shmid,NULL,0)) == (int *)-1){
-        perror("shmat");
-        _exit(-1);
-    }
-    if((shmid2 = shmget(IPC_PRIVATE,sizeof(int[max][max]),IPC_CREAT | 0666))<0){
-        perror("shmget");
-        _exit(-1);
-    }
-    if((shm_array2[max] = shmat(shmid2,NULL,0)) == (int *)-1){
-        perror("shmat");
-        _exit(-1);
-    }
-    if((shmid3 = shmget(IPC_PRIVATE,sizeof(int[max][max]),IPC_CREAT | 0666))<0){
-        perror("shmget");
-        _exit(-1);
-    }
-    if((shm_array3[max] = shmat(shmid3,NULL,0)) == (int *)-1){
-        perror("shmat");
-        _exit(-1);
-    }
- if((divid = shmget(IPC_PRIVATE,sizeof(int),IPC_CREAT | 0666))<0){
-        perror("shmget");
-        _exit(-1);
-    }
-    if((*div = shmat(divid,NULL,0)) == (int *)-1){
-        perror("shmat");
-        _exit(-1);
-    }
-     *div=0;
-     for (int i = 0; i < max; i++) {
-        for (int j = 0; j < max; j++) {
-            shm_array[i][j] = rand() % 10;
-            shm_array2[i][j] = rand() % 10;
+    for(i=0;i<r1/2;i++)
+        for(j=0;j<c1;j++) {
+        *shmdata1 = 0;
+        for(k=0;k<c1;k++)
+            *shmdata1 += mtx1[i][k]*mtx2[k][j];
+            shmdata1 += sizeof(int);
         }
+    pid = fork();
+    if(pid == 0) {
+        for(i=r1/2;i<r1;i++)
+            for(j=0;j<c2;j++) {
+                *shmdata1 = 0;
+                for(k=0;k<c1;k++)
+                    *shmdata1 += mtx1[i][k]*mtx2[k][j];
+                    shmdata1 += sizeof(int);
+            }        
     }
-     start=clock();
-     pid= fork();
-     if(pid==0){
-        multi(shm_array,shm_array2,shm_array3,div,pid);
-     }
-     if(pid>0){
-       wait(NULL);
-       multi(shm_array,shm_array2,shm_array3,div,pid);
-       if(shmdt(shm_array)==-1){
-        perror("shmdt");
-        _exit(-1);
-        }
-      if(shmctl(shmid,IPC_RMID,NULL)==-1){
-        perror("shmctl");
-        _exit(-1);
-       }
-       if(shmdt(shm_array2)==-1){
-        perror("shmdt");
-        _exit(-1);
-        }
-      if(shmctl(shmid2,IPC_RMID,NULL)==-1){
-        perror("shmctl");
-        _exit(-1);
-       }
-       if(shmdt(shm_array3)==-1){
-        perror("shmdt");
-        _exit(-1);
-        }
-      if(shmctl(shmid3,IPC_RMID,NULL)==-1){
-        perror("shmctl");
-        _exit(-1);
-       }
-    // printf("\n %d",dividing_variable); 
-     end=clock();
-     printf("\n");
-         printf("mul of Matrix A and B\n");
-    for (int i = 0; i < max; i++) {
-        for (int j = 0; j < max; j++) 
-            printf("%d  ", shm_array3[i][j]);       
-        printf("\n");
+    while((pid = wait(&status))!= -1);
+    shmdata1 = shmdata;
+    printf("\n\n\nResult from %d\n", getpid());
+    for(i=0;i<r1;++i) {
+        printf("\n    ");
+        for(j=0;j<c2;j++,shmdata1+=sizeof(int))
+            printf("%d ",*shmdata1);
     }
-
-    cpu_time_used = (double)( (end - start))/ CLOCKS_PER_SEC; 
-		printf("\ncpu time => %f",cpu_time_used); 
-    }
-    return 0;
-
-
-
-
-
-}
-
-
+    shmdt((void*)shmdata1);
+    shmdt((void*)shmdata2);
+    shmctl(shmid1,IPC_RMID,shmidds);
+    //shmctl(shmid2,IPC_RMID,shmidds);
+    return 1;
+} 
